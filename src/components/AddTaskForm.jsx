@@ -1,24 +1,20 @@
 import { useState } from 'react'
 
+const EMPTY = { title: '', note: '', due: '', priority: '' }
+
 export default function AddTaskForm({ onAdd }) {
+  const [form, setForm]         = useState(EMPTY)
   const [expanded, setExpanded] = useState(false)
-  const [title, setTitle] = useState('')
-  const [note, setNote] = useState('')
-  const [due, setDue] = useState('')
-  const [priority, setPriority] = useState('')
+
+  const set = key => e => setForm(prev => ({ ...prev, [key]: e.target.value }))
 
   function confirm() {
-    if (title.trim()) {
-      onAdd(title, note, due, priority)
-    }
+    if (form.title.trim()) onAdd(form)
     cancel()
   }
 
   function cancel() {
-    setTitle('')
-    setNote('')
-    setDue('')
-    setPriority('')
+    setForm(EMPTY)
     setExpanded(false)
   }
 
@@ -29,13 +25,10 @@ export default function AddTaskForm({ onAdd }) {
         <input
           className="task-input"
           placeholder="Add a task…"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
+          value={form.title}
+          onChange={set('title')}
           onFocus={() => setExpanded(true)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') confirm()
-            if (e.key === 'Escape') cancel()
-          }}
+          onKeyDown={e => { if (e.key === 'Enter') confirm(); if (e.key === 'Escape') cancel() }}
           maxLength={200}
           autoComplete="off"
         />
@@ -48,21 +41,21 @@ export default function AddTaskForm({ onAdd }) {
               className="meta-input"
               type="text"
               placeholder="Add a note…"
-              value={note}
-              onChange={e => setNote(e.target.value)}
+              value={form.note}
+              onChange={set('note')}
               style={{ flex: 1, minWidth: '120px' }}
               maxLength={300}
             />
             <input
               className="meta-input"
               type="date"
-              value={due}
-              onChange={e => setDue(e.target.value)}
+              value={form.due}
+              onChange={set('due')}
             />
             <select
               className="meta-input priority-select"
-              value={priority}
-              onChange={e => setPriority(e.target.value)}
+              value={form.priority}
+              onChange={set('priority')}
             >
               <option value="">No priority</option>
               <option value="high">🔴 High</option>
@@ -72,7 +65,7 @@ export default function AddTaskForm({ onAdd }) {
           </div>
           <div className="add-task-actions">
             <button className="btn-sm btn-cancel" onClick={cancel}>Cancel</button>
-            <button className="btn-sm btn-add" onClick={confirm}>Add Task</button>
+            <button className="btn-sm btn-add"    onClick={confirm}>Add Task</button>
           </div>
         </>
       )}
