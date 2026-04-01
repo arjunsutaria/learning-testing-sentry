@@ -1,13 +1,12 @@
 import { useState } from 'react'
-import { DEFAULT_LISTS } from '../App'
+import { todayStr, DEFAULT_LISTS } from '../utils'
 
-function todayStr() { return new Date().toISOString().slice(0, 10) }
-
-function getCount(listId, tasks) {
+// How many incomplete tasks belong to each list (shown as badge)
+function getIncompleteCount(listId, tasks) {
   if (listId === 'all')     return tasks.filter(t => !t.done).length
-  if (listId === 'today')   return tasks.filter(t => t.due === todayStr() && !t.done).length
-  if (listId === 'starred') return tasks.filter(t => t.priority === 'high' && !t.done).length
-  return tasks.filter(t => t.listId === listId && !t.done).length
+  if (listId === 'today')   return tasks.filter(t => !t.done && t.due === todayStr()).length
+  if (listId === 'starred') return tasks.filter(t => !t.done && t.priority === 'high').length
+  return tasks.filter(t => !t.done && t.listId === listId).length
 }
 
 export default function Sidebar({ lists, tasks, activeList, onSelectList, onAddList }) {
@@ -23,11 +22,8 @@ export default function Sidebar({ lists, tasks, activeList, onSelectList, onAddL
   }
 
   function handleKeyDown(e) {
-    if (e.key === 'Enter') confirmNewList()
-    if (e.key === 'Escape') {
-      setNewListName('')
-      setShowNewList(false)
-    }
+    if (e.key === 'Enter')  confirmNewList()
+    if (e.key === 'Escape') { setNewListName(''); setShowNewList(false) }
   }
 
   return (
@@ -37,7 +33,7 @@ export default function Sidebar({ lists, tasks, activeList, onSelectList, onAddL
 
       <div>
         {allLists.map(list => {
-          const count = getCount(list.id, tasks)
+          const count  = getIncompleteCount(list.id, tasks)
           const active = list.id === activeList
           return (
             <div
