@@ -1,20 +1,41 @@
 function todayStr() { return new Date().toISOString().slice(0, 10) }
+function tomorrowStr() {
+  const d = new Date(); d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
 
-function formatDate(d) {
+function getUrgency(task) {
+  if (task.done || !task.due) return null
   const t = todayStr()
-  if (d === t) return 'Today'
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
-  if (d === tomorrow.toISOString().slice(0, 10)) return 'Tomorrow'
-  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
-  if (d === yesterday.toISOString().slice(0, 10)) return 'Yesterday'
-  return new Date(d + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  if (task.due < t) return 'overdue'
+  if (task.due === t) return 'today'
+  if (task.due === tomorrowStr()) return 'tomorrow'
+  const daysAway = Math.round((new Date(task.due + 'T00:00:00') - new Date(t + 'T00:00:00')) / 86400000)
+  if (daysAway <= 7) return 'upcoming'
+  return null
+}
+
+function getDueLabel(task) {
+  if (!task.due) return null
+  const t = todayStr()
+  const urgency = getUrgency(task)
+
+  if (urgency === 'overdue') {
+    const days = Math.round((new Date(t + 'T00:00:00') - new Date(task.due + 'T00:00:00')) / 86400000)
+    return days === 1 ? '1 day overdue' : `${days} days overdue`
+  }
+  if (urgency === 'today')    return 'Due today'
+  if (urgency === 'tomorrow') return 'Due tomorrow'
+  if (urgency === 'upcoming') {
+    const days = Math.round((new Date(task.due + 'T00:00:00') - new Date(t + 'T00:00:00')) / 86400000)
+    return `In ${days} days`
+  }
+  return new Date(task.due + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export default function TaskCard({ task, activeListId, lists, onToggle, onEdit, onDelete }) {
-  const dueCls = task.due
-    ? (task.due < todayStr() && !task.done ? ' overdue' : task.due === todayStr() ? ' today' : '')
-    : ''
-
+  const urgency = getUrgency(task)
+  const dueLabel = getDueLabel(task)
   const listObj = lists.find(l => l.id === task.listId)
   const showListTag = listObj && activeListId === 'all'
 
@@ -23,10 +44,16 @@ export default function TaskCard({ task, activeListId, lists, onToggle, onEdit, 
     task.priority === 'med'  ? <span className="priority-dot dot-med" />  :
     task.priority === 'low'  ? <span className="priority-dot dot-low" />  : null
 
-  const hasMeta = priorityDot || task.due || showListTag
+  const hasMeta = priorityDot || dueLabel || showListTag
+
+  const urgencyIcon =
+    urgency === 'overdue'  ? '🔴' :
+    urgency === 'today'    ? '🟠' :
+    urgency === 'tomorrow' ? '🟡' :
+    urgency === 'upcoming' ? '🔵' : '📅'
 
   return (
-    <div className={`task-card${task.done ? ' done' : ''} priority-${task.priority || 'none'}`}>
+    <div className={`task-card${task.done ? ' done' : ''}${urgency ? ` urgency-${urgency}` : ''} priority-${task.priority || 'none'}`}>
       <div className="task-checkbox-wrap">
         <div
           className={`task-checkbox${task.done ? ' checked' : ''}`}
@@ -38,9 +65,12 @@ export default function TaskCard({ task, activeListId, lists, onToggle, onEdit, 
         {task.note && <div className="task-note">{task.note}</div>}
         {hasMeta && (
           <div className="task-meta">
+            {urgency === 'overdue' && !task.done && <span className="pulse-dot" />}
             {priorityDot}
-            {task.due && (
-              <span className={`task-due${dueCls}`}>📅 {formatDate(task.due)}</span>
+            {dueLabel && (
+              <span className={`urgency-badge${urgency ? ` ${urgency}` : ''}`}>
+                {urgencyIcon} {dueLabel}
+              </span>
             )}
             {showListTag && (
               <span className="task-tag">{listObj.icon} {listObj.name}</span>

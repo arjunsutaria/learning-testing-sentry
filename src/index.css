@@ -393,6 +393,66 @@ body {
 .task-due.overdue { color: var(--priority-high); }
 .task-due.today { color: var(--priority-med); }
 
+/* ── URGENCY ── */
+.task-card.urgency-overdue {
+  border-left: 3px solid var(--priority-high);
+  background: rgba(255, 59, 48, 0.03);
+  padding-left: 11px;
+}
+.task-card.urgency-today {
+  border-left: 3px solid var(--priority-med);
+  background: rgba(255, 149, 0, 0.03);
+  padding-left: 11px;
+}
+.task-card.urgency-tomorrow {
+  border-left: 3px solid #ffcc00;
+  padding-left: 11px;
+}
+.task-card.urgency-upcoming {
+  border-left: 3px solid var(--accent);
+  padding-left: 11px;
+}
+
+.urgency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.urgency-badge.overdue {
+  background: rgba(255, 59, 48, 0.12);
+  color: var(--priority-high);
+}
+.urgency-badge.today {
+  background: rgba(255, 149, 0, 0.12);
+  color: var(--priority-med);
+}
+.urgency-badge.tomorrow {
+  background: rgba(255, 204, 0, 0.18);
+  color: #8a6800;
+}
+.urgency-badge.upcoming {
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--accent);
+}
+
+@keyframes urgency-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(0.75); }
+}
+
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--priority-high);
+  animation: urgency-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
 .task-tag {
   font-size: 11px;
   font-weight: 600;
