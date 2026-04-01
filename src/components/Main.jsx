@@ -4,7 +4,7 @@ import TaskCard from './TaskCard'
 
 const SORT_OPTIONS = ['default', 'priority', 'due', 'alpha']
 const SORT_LABELS = { default: '⇅ Sort', priority: '🔴 Priority', due: '📅 Due Date', alpha: '🔤 A–Z' }
-const FILTER_LABELS = { all: 'All', active: 'Active', done: 'Completed', today: 'Due Today', high: 'High Priority' }
+const FILTER_LABELS = { all: 'All', active: 'Active', done: 'Completed', urgent: '🔴 Urgent', today: 'Due Today', high: 'High Priority' }
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
 
@@ -19,6 +19,7 @@ function applyFilter(tasks, filter) {
   switch (filter) {
     case 'active': return tasks.filter(t => !t.done)
     case 'done':   return tasks.filter(t => t.done)
+    case 'urgent': return tasks.filter(t => !t.done && t.due && t.due <= todayStr())
     case 'today':  return tasks.filter(t => t.due === todayStr())
     case 'high':   return tasks.filter(t => t.priority === 'high')
     default:       return tasks
