@@ -113,6 +113,10 @@ export default function Main({
       {/* Add task */}
       <AddTaskForm onAdd={onAddTask} />
 
+      <button onClick={() => { throw new Error('Test error from Main component') }} >
+        Test Sentry
+      </button>
+
       {/* Filters */}
       <div className="filters">
         {FILTERS.map(({ id, label }) => (

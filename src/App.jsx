@@ -1,8 +1,10 @@
+import * as Sentry from '@sentry/react'
 import { useState, useEffect } from 'react'
 import { uid, todayStr, DEFAULT_LISTS, LIST_EMOJIS, LIST_COLORS, randomPick } from './utils'
 import Sidebar from './components/Sidebar'
 import Main from './components/Main'
 import EditModal from './components/EditModal'
+
 
 // ── Default data shown on first load ─────────────────────────────────────────
 
@@ -88,6 +90,8 @@ export default function App() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <Sentry.ErrorBoundary fallback={<p>Something went wrong.</p>}>
+
     <>
       <Sidebar
         lists={lists}
@@ -117,5 +121,6 @@ export default function App() {
         />
       )}
     </>
+    </Sentry.ErrorBoundary>
   )
 }
