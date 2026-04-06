@@ -5,11 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "node --import ./server/instrument.js server/index.js",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/node": "^10.47.0",
     "@sentry/react": "^10.47.0",
+    "concurrently": "^9.2.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "express": "^5.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
