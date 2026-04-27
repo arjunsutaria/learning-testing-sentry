@@ -121,13 +121,135 @@ app.get('/api/break/db', async (req, res) => {
   throw new Error('DB error: tasks — simulated connection timeout')
 })
 
+// 7. Validation error — manually captured with withScope (handled, not unhandled)
+//    Teaches: Sentry.withScope, setExtra, setLevel, captureException on a 4xx
+app.post('/api/break/validation', (req, res) => {
+  Sentry.setTag('test.type', 'validation_error')
+  const { title, priority } = req.body || {}
+  const missing = []
+  if (!title)    missing.push('title')
+  if (!priority) missing.push('priority')
+
+  if (missing.length === 0) {
+    return res.json({ ok: true, received: { title, priority } })
+  }
+
+  const err = new Error(`ValidationError: missing required fields: ${missing.join(', ')}`)
+  err.name = 'ValidationError'
+
+  Sentry.withScope(scope => {
+    scope.setTag('validation.fields_missing', missing.join(','))
+    scope.setExtra('request.body', req.body)
+    scope.setExtra('validation.missing', missing)
+    scope.setLevel('warning')  // 4xx — not a fatal crash, just a warning
+    Sentry.captureException(err)
+  })
+
+  res.status(422).json({ error: err.message, missing })
+})
+
+// 8. Auth error — custom fingerprint groups all auth failures under one issue
+//    Teaches: scope.setFingerprint, custom grouping strategy
+app.get('/api/break/auth', (req, res) => {
+  Sentry.setTag('test.type', 'auth_error')
+  const err = new Error('AuthError: token missing or expired')
+  err.name = 'AuthError'
+
+  Sentry.withScope(scope => {
+    scope.setTag('auth.reason', 'token_expired')
+    scope.setTag('auth.route', req.path)
+    scope.setLevel('error')
+    scope.setFingerprint(['auth-failure', '{{ default }}'])  // all auth errors → same issue
+    Sentry.captureException(err)
+  })
+
+  res.status(401).json({ error: 'Unauthorized — token expired or missing' })
+})
+
+// 9. Cascading error — nested spans simulate a multi-service failure chain
+//    Teaches: Sentry.startSpan nesting, breadcrumb trail, distributed trace depth
+app.get('/api/break/cascade', async (req, res) => {
+  Sentry.setTag('test.type', 'cascade_error')
+  Sentry.addBreadcrumb({ category: 'cascade', message: 'Request received — starting auth service', level: 'info' })
+
+  await Sentry.startSpan({ name: 'service.auth', op: 'auth', attributes: { 'service.name': 'auth' } }, async () => {
+    Sentry.addBreadcrumb({ category: 'cascade', message: 'Auth service: validating token (OK)', level: 'info' })
+    await new Promise(r => setTimeout(r, 50))
+
+    await Sentry.startSpan({ name: 'service.user-lookup', op: 'db', attributes: { 'service.name': 'user-service' } }, async () => {
+      Sentry.addBreadcrumb({ category: 'cascade', message: 'User service: loading profile (OK)', level: 'info' })
+      await new Promise(r => setTimeout(r, 80))
+
+      await Sentry.startSpan({ name: 'service.permissions', op: 'http.client', attributes: { 'service.name': 'permissions' } }, async () => {
+        Sentry.addBreadcrumb({ category: 'cascade', message: 'Permissions service: FAILED — connection refused', level: 'error' })
+        await new Promise(r => setTimeout(r, 40))
+        throw new Error('CascadeError: permissions-service timed out — auth and user-lookup completed but permissions check failed')
+      })
+    })
+  })
+})
+
+// 10. Rate limit — simulated 429 from a downstream external API
+//     Teaches: withScope, extra data on a specific event, 4xx vs 5xx handling
+app.get('/api/break/ratelimit', async (req, res) => {
+  Sentry.setTag('test.type', 'rate_limit')
+  Sentry.addBreadcrumb({ category: 'api', message: 'Calling downstream payments API...', level: 'info' })
+  await new Promise(r => setTimeout(r, 120))
+  Sentry.addBreadcrumb({ category: 'api', message: 'Payments API returned 429 Too Many Requests', level: 'error' })
+
+  const err = new Error('RateLimitError: downstream payments-api returned 429 Too Many Requests')
+  err.name = 'RateLimitError'
+
+  Sentry.withScope(scope => {
+    scope.setTag('external.api',     'payments-service')
+    scope.setTag('http.status_code', '429')
+    scope.setExtra('rate_limit.retry_after_seconds', 60)
+    scope.setExtra('rate_limit.limit',     100)
+    scope.setExtra('rate_limit.remaining', 0)
+    scope.setLevel('warning')
+    Sentry.captureException(err)
+  })
+
+  res.status(429).json({ error: 'Too many requests to payments API', retry_after: 60 })
+})
+
+// 11. Timeout — operation spans a budget window, exceeds it, then captures with perf data
+//     Teaches: span attributes for timing, setMeasurement-style extra data
+app.get('/api/break/timeout', async (req, res) => {
+  Sentry.setTag('test.type', 'timeout')
+  const BUDGET_MS = 400
+  const ACTUAL_MS = 1100
+  Sentry.addBreadcrumb({ category: 'perf', message: `Operation started (budget: ${BUDGET_MS}ms)`, level: 'info' })
+
+  await Sentry.startSpan(
+    { name: 'external.slow-vendor-api', op: 'http.client', attributes: { 'timeout.budget_ms': BUDGET_MS, 'timeout.actual_ms': ACTUAL_MS } },
+    async () => { await new Promise(r => setTimeout(r, ACTUAL_MS)) }
+  )
+
+  Sentry.addBreadcrumb({ category: 'perf', message: `Operation took ${ACTUAL_MS}ms — exceeded ${BUDGET_MS}ms budget`, level: 'error' })
+  const err = new Error(`TimeoutError: vendor-api took ${ACTUAL_MS}ms, exceeded ${BUDGET_MS}ms budget`)
+  err.name = 'TimeoutError'
+
+  Sentry.withScope(scope => {
+    scope.setTag('timeout.exceeded', 'true')
+    scope.setExtra('timeout.budget_ms', BUDGET_MS)
+    scope.setExtra('timeout.actual_ms', ACTUAL_MS)
+    scope.setExtra('timeout.overrun_ms', ACTUAL_MS - BUDGET_MS)
+    Sentry.captureException(err)
+  })
+
+  res.status(504).json({ error: 'Gateway timeout', budget_ms: BUDGET_MS, actual_ms: ACTUAL_MS })
+})
+
 // ── Error handlers ────────────────────────────────────────────────────────────
 
 Sentry.setupExpressErrorHandler(app)
 
 app.use((err, req, res, next) => {
   console.error(err.message)
+  if (res.headersSent) return next(err)
   res.status(500).json({ error: err.message })
 })
 
-app.listen(3001, () => console.log('Server running on http://localhost:3001'))
+const PORT = Number(process.env.PORT) || 3001
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`))

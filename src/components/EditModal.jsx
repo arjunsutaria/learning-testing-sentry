@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 
 export default function EditModal({ task, onSave, onClose }) {
-  const [title, setTitle] = useState(task.title)
-  const [note, setNote] = useState(task.note)
-  const [due, setDue] = useState(task.due)
-  const [priority, setPriority] = useState(task.priority)
+  const [title, setTitle] = useState(task.title ?? '')
+  const [note, setNote] = useState(task.note ?? '')
+  const [due, setDue] = useState(task.due ?? '')
+  const [priority, setPriority] = useState(task.priority ?? '')
 
   useEffect(() => {
     function handleKey(e) {
