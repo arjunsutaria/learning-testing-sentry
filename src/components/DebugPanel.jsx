@@ -8,34 +8,153 @@ import { useState } from 'react'
 const BASE = 'http://localhost:3001'
 
 const SCENARIOS = [
+  // ── Backend: Basics ─────────────────────────────────────────────────────────
   {
-    group: 'Backend Errors',
+    group: 'Backend — Basic Errors',
     color: '#ff3b30',
     items: [
-      { label: 'Sync Error',         desc: 'throw inside route handler',        url: `${BASE}/api/break` },
-      { label: 'Async Error',        desc: 'throw after await',                  url: `${BASE}/api/break/async` },
-      { label: 'TypeError',          desc: 'read property of undefined',         url: `${BASE}/api/break/type` },
-      { label: 'DB Error',           desc: 'simulated connection timeout',       url: `${BASE}/api/break/db` },
-      { label: 'Promise Rejection',  desc: 'unhandled promise rejection',        url: `${BASE}/api/break/promise` },
+      { label: 'Sync Error',         desc: 'throw inside route handler',             url: `${BASE}/api/break` },
+      { label: 'Async Error',        desc: 'throw after await',                       url: `${BASE}/api/break/async` },
+      { label: 'TypeError',          desc: 'read property of undefined',              url: `${BASE}/api/break/type` },
+      { label: 'DB Error',           desc: 'simulated connection timeout',            url: `${BASE}/api/break/db` },
+      { label: 'Promise Rejection',  desc: 'unhandled promise rejection',             url: `${BASE}/api/break/promise` },
     ]
   },
+  // ── Backend: Advanced ───────────────────────────────────────────────────────
+  {
+    group: 'Backend — Advanced',
+    color: '#ff6b35',
+    items: [
+      {
+        label: 'Validation Error',
+        desc: 'withScope + setExtra on a 422 (handled capture)',
+        url: `${BASE}/api/break/validation`,
+        method: 'POST',
+        body: {},              // empty body → triggers missing-field validation
+      },
+      {
+        label: 'Auth Error',
+        desc: 'custom fingerprint → all auth failures in one issue',
+        url: `${BASE}/api/break/auth`,
+      },
+      {
+        label: 'Cascade Error',
+        desc: 'nested spans: auth → user-lookup → permissions FAILS',
+        url: `${BASE}/api/break/cascade`,
+      },
+      {
+        label: 'Rate Limit (429)',
+        desc: 'downstream API 429, withScope + extra retry data',
+        url: `${BASE}/api/break/ratelimit`,
+      },
+      {
+        label: 'Timeout',
+        desc: 'operation exceeds budget — span + extra timing data',
+        url: `${BASE}/api/break/timeout`,
+      },
+    ]
+  },
+  // ── Performance ─────────────────────────────────────────────────────────────
   {
     group: 'Performance',
     color: '#ff9500',
     items: [
-      { label: 'Slow Endpoint',      desc: '2-3s artificial delay',             url: `${BASE}/api/slow` },
-      { label: 'Load Tasks',         desc: 'db.findAll with latency + spans',   url: `${BASE}/api/tasks` },
-      { label: 'Load Lists',         desc: 'db.findAll with latency + spans',   url: `${BASE}/api/lists` },
+      { label: 'Slow Endpoint',  desc: '2-3s artificial delay with span',     url: `${BASE}/api/slow` },
+      { label: 'Load Tasks',     desc: 'db.findAll with latency + spans',     url: `${BASE}/api/tasks` },
+      { label: 'Load Lists',     desc: 'db.findAll with latency + spans',     url: `${BASE}/api/lists` },
     ]
   },
+  // ── Frontend: Basics ────────────────────────────────────────────────────────
   {
-    group: 'Frontend Errors',
+    group: 'Frontend — Basic Errors',
     color: '#af52de',
     items: [
-      { label: 'Handled Error',      desc: 'captureException in try/catch',     fn: () => { try { null.property } catch(e) { Sentry.captureException(e) } } },
-      { label: 'Capture Message',    desc: 'manual captureMessage warning',     fn: () => Sentry.captureMessage('Frontend warning triggered from DebugPanel', 'warning') },
-      { label: 'Add Breadcrumb',     desc: 'manual breadcrumb entry',           fn: () => Sentry.addBreadcrumb({ category: 'debug', message: 'Manual breadcrumb from DebugPanel', level: 'info', data: { triggeredAt: new Date().toISOString() } }) },
-      { label: 'Render Crash',       desc: 'throws inside render → ErrorBoundary', fn: 'render_crash' },
+      { label: 'Handled Error',   desc: 'captureException in try/catch',              fn: () => { try { null.property } catch(e) { Sentry.captureException(e) } } },
+      { label: 'Capture Message', desc: 'manual captureMessage warning',              fn: () => Sentry.captureMessage('Frontend warning triggered from DebugPanel', 'warning') },
+      { label: 'Add Breadcrumb',  desc: 'manual breadcrumb entry',                   fn: () => Sentry.addBreadcrumb({ category: 'debug', message: 'Manual breadcrumb from DebugPanel', level: 'info', data: { triggeredAt: new Date().toISOString() } }) },
+      { label: 'Render Crash',    desc: 'throws inside render → ErrorBoundary',      fn: 'render_crash' },
+    ]
+  },
+  // ── Frontend: Advanced ──────────────────────────────────────────────────────
+  {
+    group: 'Frontend — Advanced',
+    color: '#5e5ce6',
+    items: [
+      {
+        label: 'withScope',
+        desc: 'one-off scope: temp tags + extra on a single capture',
+        fn: () => {
+          Sentry.withScope(scope => {
+            scope.setTag('checkout.step', 'payment')
+            scope.setTag('checkout.cart_id', 'cart_abc123')
+            scope.setExtra('cart', { items: 3, total: 42.99, currency: 'USD' })
+            scope.setLevel('error')
+            scope.captureException(new Error('PaymentError: card declined during checkout'))
+          })
+        },
+      },
+      {
+        label: 'setContext',
+        desc: 'rich structured context blocks attached to event',
+        fn: () => {
+          Sentry.setContext('device', { model: 'MacBook Pro', os: 'macOS 14', memory_gb: 16 })
+          Sentry.setContext('feature_flags', { new_checkout: true, dark_mode: false, beta_ui: true })
+          Sentry.captureMessage('User with rich context hit an issue', 'info')
+        },
+      },
+      {
+        label: 'Deep TypeError',
+        desc: 'null.profile.preferences.theme — 4 levels deep',
+        fn: () => {
+          try {
+            const data = { user: { profile: null } }
+            // eslint-disable-next-line no-unused-vars
+            const _ = data.user.profile.preferences.theme
+          } catch (err) {
+            Sentry.captureException(err, {
+              extra: { path: 'data.user.profile.preferences.theme', context: 'reading theme preference' },
+            })
+          }
+        },
+      },
+      {
+        label: 'Network Timeout',
+        desc: 'fetch aborted via AbortController after 500ms',
+        fn: async () => {
+          const controller = new AbortController()
+          setTimeout(() => controller.abort(), 500)
+          try {
+            await fetch(`${BASE}/api/slow`, { signal: controller.signal })
+          } catch (err) {
+            Sentry.captureException(err, {
+              tags: { 'network.timeout': 'true', 'network.budget_ms': '500' },
+              extra: { url: `${BASE}/api/slow`, aborted: true },
+            })
+          }
+        },
+      },
+      {
+        label: 'Unhandled Promise',
+        desc: 'Promise.reject() with no .catch() — global handler',
+        fn: () => {
+          // No .catch() — browser fires window.onunhandledrejection
+          // Sentry's SDK hooks that event automatically
+          Promise.reject(new Error('Unhandled frontend promise rejection — no .catch()'))
+        },
+      },
+      {
+        label: 'captureEvent',
+        desc: 'raw low-level event with custom fingerprint',
+        fn: () => {
+          Sentry.captureEvent({
+            message: 'Business event: checkout abandoned at shipping step',
+            level: 'warning',
+            tags: { 'checkout.step': 'shipping', 'abandon.reason': 'high_shipping_cost' },
+            extra: { cart_value: 89.99, items: 5, shipping_cost: 24.99 },
+            fingerprint: ['checkout-abandoned', 'shipping-cost'],
+          })
+        },
+      },
     ]
   },
 ]
@@ -59,10 +178,14 @@ export default function DebugPanel() {
     Sentry.addBreadcrumb({ category: 'debug', message: `DebugPanel: firing "${item.label}"`, level: 'info' })
     try {
       if (item.fn) {
-        item.fn()
+        await item.fn()
         setStatus({ label: item.label, state: 'done', msg: 'Sent to Sentry' })
       } else {
-        const res = await fetch(item.url)
+        const opts = item.method === 'POST'
+          ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item.body ?? {}) }
+          : undefined
+        const res = await fetch(item.url, opts)
+        // 4xx/5xx are expected for error scenarios — show status but don't throw
         setStatus({ label: item.label, state: res.ok ? 'done' : 'error', msg: `HTTP ${res.status}` })
       }
     } catch (err) {
