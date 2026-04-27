@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentry — Complete End-to-End Architecture</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d; --border-light: #21262d;
+    --text: #e6edf3; --text-dim: #8b949e; --text-faint: #484f58;
+    --red: #f85149; --orange: #f0883e; --yellow: #d29922; --green: #3fb950;
+    --blue: #58a6ff; --purple: #a371f7; --pink: #f778ba; --cyan: #79c0ff;
+    --red-bg: #f8514915; --orange-bg: #f0883e15; --yellow-bg: #d2992215;
+    --green-bg: #3fb95015; --blue-bg: #0d419d22; --purple-bg: #a371f715;
+    --pink-bg: #f778ba15; --cyan-bg: #79c0ff15;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  .page { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+  h1 { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 28px; }
+
+  /* Legend */
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 28px; align-items: center; }
+  .legend-title { font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-dim); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Section labels */
+  .section-bar { display: flex; align-items: center; gap: 10px; margin: 28px 0 16px; }
+  .section-bar .label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 4px 12px; border-radius: 6px; white-space: nowrap; }
+  .section-bar .line { flex: 1; height: 1px; }
+  .section-bar.frontend .label { background: var(--blue-bg); color: var(--blue); }
+  .section-bar.frontend .line { background: var(--blue); opacity: 0.2; }
+  .section-bar.backend .label { background: var(--green-bg); color: var(--green); }
+  .section-bar.backend .line { background: var(--green); opacity: 0.2; }
+  .section-bar.shared .label { background: var(--purple-bg); color: var(--purple); }
+  .section-bar.shared .line { background: var(--purple); opacity: 0.2; }
+  .section-bar.output .label { background: var(--pink-bg); color: var(--pink); }
+  .section-bar.output .line { background: var(--pink); opacity: 0.2; }
+
+  /* Flow rows */
+  .flow-row { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 4px 0 16px; }
+
+  /* Nodes */
+  .node { border-radius: 10px; padding: 14px 16px; min-width: 155px; max-width: 200px; border: 1.5px solid; flex-shrink: 0; }
+  .node .icon { font-size: 18px; margin-bottom: 4px; }
+  .node .title { font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
+  .node .desc { font-size: 10.5px; line-height: 1.5; opacity: 0.85; }
+  .node .tags { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 6px; }
+  .tag { font-size: 8.5px; font-weight: 700; padding: 1.5px 6px; border-radius: 5px; white-space: nowrap; }
+  .tag-error { background: #f8514930; color: var(--red); }
+  .tag-span { background: #a371f730; color: #bc8cff; }
+  .tag-log { background: #3fb95030; color: #56d364; }
+  .tag-session { background: #d2992230; color: #e3b341; }
+  .tag-replay { background: #f778ba30; color: var(--pink); }
+  .tag-vitals { background: #79c0ff30; color: var(--cyan); }
+  .tag-metric { background: #f0883e30; color: var(--orange); }
+
+  .n-user { background: #484f5810; border-color: var(--text-faint); }
+  .n-react { background: var(--blue-bg); border-color: var(--blue); }
+  .n-sdk-fe { background: #1f6feb20; border-color: #1f6feb; }
+  .n-sdk-be { background: var(--green-bg); border-color: var(--green); }
+  .n-middleware { background: var(--cyan-bg); border-color: var(--cyan); }
+  .n-route { background: var(--cyan-bg); border-color: var(--cyan); }
+  .n-errhandler { background: var(--green-bg); border-color: var(--green); }
+  .n-envelope { background: var(--orange-bg); border-color: var(--orange); }
+  .n-relay { background: var(--orange-bg); border-color: var(--orange); }
+  .n-kafka { background: var(--purple-bg); border-color: var(--purple); }
+  .n-process { background: var(--green-bg); border-color: var(--green); }
+  .n-clickhouse { background: var(--yellow-bg); border-color: var(--yellow); }
+  .n-postgres { background: var(--cyan-bg); border-color: var(--cyan); }
+  .n-dashboard { background: var(--pink-bg); border-color: var(--pink); }
+  .n-alert { background: var(--red-bg); border-color: var(--red); }
+  .n-integration { background: var(--purple-bg); border-color: var(--purple); }
+
+  /* Arrows */
+  .arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 40px; padding-top: 18px; flex-shrink: 0; }
+  .arrow-line { color: var(--text-faint); font-size: 14px; letter-spacing: -3px; white-space: nowrap; }
+  .arrow-label { font-size: 8.5px; color: var(--text-dim); text-align: center; margin-top: 2px; max-width: 60px; line-height: 1.3; }
+  .arrow-down { display: flex; flex-direction: column; align-items: center; padding: 6px 0; color: var(--text-faint); font-size: 13px; }
+  .arrow-down .arrow-label { margin-top: 0; margin-left: 4px; }
+
+  /* Detail panels */
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+  .detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .detail-card .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .detail-card .card-body { font-size: 11.5px; line-height: 1.7; color: var(--text-dim); }
+  .detail-card .card-body strong { color: var(--text); font-weight: 600; }
+  .detail-card code { background: var(--border-light); padding: 1px 5px; border-radius: 4px; font-size: 10.5px; color: var(--text); }
+
+  .card-title.blue { color: var(--blue); }
+  .card-title.green { color: var(--green); }
+  .card-title.orange { color: var(--orange); }
+  .card-title.purple { color: var(--purple); }
+  .card-title.yellow { color: var(--yellow); }
+  .card-title.cyan { color: var(--cyan); }
+  .card-title.pink { color: var(--pink); }
+  .card-title.red { color: var(--red); }
+
+  /* Connector line between frontend and backend */
+  .connector { display: flex; align-items: center; justify-content: center; padding: 12px 0; gap: 10px; }
+  .connector .conn-line { flex: 1; height: 1px; border-top: 2px dashed var(--purple); opacity: 0.3; }
+  .connector .conn-label { font-size: 10px; font-weight: 700; color: var(--purple); background: var(--purple-bg); padding: 3px 12px; border-radius: 20px; white-space: nowrap; }
+
+  /* Callout */
+  .callout { margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 12px; line-height: 1.6; border-left: 3px solid; }
+  .callout strong { color: var(--text); }
+  .callout.blue { background: var(--blue-bg); border-color: var(--blue); color: var(--cyan); }
+  .callout.purple { background: var(--purple-bg); border-color: var(--purple); color: #bc8cff; }
+  .callout.orange { background: var(--orange-bg); border-color: var(--orange); color: var(--orange); }
+
+  /* Two-col layout for storage */
+  .storage-row { display: flex; gap: 12px; align-items: flex-start; }
+  .storage-row > * { flex: 1; }
+
+  /* Merge arrow */
+  .merge-point { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+  .merge-label { font-size: 10px; color: var(--text-dim); background: var(--border-light); padding: 2px 10px; border-radius: 10px; }
+
+  @media (max-width: 900px) {
+    .flow-row { flex-wrap: nowrap; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .storage-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Sentry — Complete End-to-End Architecture</h1>
+<p class="subtitle">The full journey: from user click to engineer fix. Every component, every data type, every connection.</p>
+
+<div class="legend">
+  <span class="legend-title">Data types flowing through:</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--red)"></span> Error</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--purple)"></span> Span</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span> Log</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--yellow)"></span> Session</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--pink)"></span> Replay</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--cyan)"></span> Web Vitals</span>
+  <span class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span> Metric</span>
+</div>
+
+<!-- ==================== PHASE 1: FRONTEND ==================== -->
+<div class="section-bar frontend">
+  <span class="label">Phase 1 — Frontend (Browser)</span>
+  <span class="line"></span>
+</div>
+
+<div class="flow-row">
+  <div class="node n-user">
+    <div class="icon">👤</div>
+    <div class="title">User Action</div>
+    <div class="desc">Click, navigate, type, submit form</div>
+    <div class="tags"><span class="tag tag-span">Breadcrumb auto-added</span></div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">triggers</div></div>
+
+  <div class="node n-react">
+    <div class="icon">⚛️</div>
+    <div class="title">React Component</div>
+    <div class="desc">Render cycle, event handlers, useEffect hooks</div>
+    <div class="tags">
+      <span class="tag tag-error">May throw</span>
+      <span class="tag tag-log">console.*</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">calls</div></div>
+
+  <div class="node n-sdk-fe" style="min-width:190px">
+    <div class="icon">📦</div>
+    <div class="title">@sentry/react SDK</div>
+    <div class="desc">Sentry.init() runs before app mounts. Instruments everything.</div>
+    <div class="tags">
+      <span class="tag tag-error">Error</span>
+      <span class="tag tag-span">Span</span>
+      <span class="tag tag-log">Log</span>
+      <span class="tag tag-session">Session</span>
+      <span class="tag tag-replay">Replay</span>
+      <span class="tag tag-vitals">Vitals</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">fetch() with<br>sentry-trace</div></div>
+
+  <div class="node n-user" style="border-color:var(--purple); border-style: dashed;">
+    <div class="icon">🌐</div>
+    <div class="title">HTTP Request</div>
+    <div class="desc">fetch() to your API. SDK auto-injects headers.</div>
+    <div class="tags">
+      <span class="tag tag-span">sentry-trace</span>
+      <span class="tag tag-span">baggage</span>
+    </div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <div class="card-title blue">📊 What the SDK generates automatically</div>
+    <div class="card-body">
+      <span class="tag tag-span">Transaction</span> for every pageload &amp; navigation<br>
+      <span class="tag tag-span">Span</span> for every <code>fetch()</code> call (auto-instrumented)<br>
+      <span class="tag tag-session">Session</span> tracking app start, duration, crash<br>
+      <span class="tag tag-replay">Replay</span> DOM snapshots + mutations (if enabled)<br>
+      <span class="tag tag-log">Log</span> via <code>consoleLoggingIntegration</code><br>
+      <span class="tag tag-vitals">Web Vitals</span> LCP, FID, CLS, TTFB, FCP<br>
+      <strong>Breadcrumbs</strong> — clicks, navigations, console calls, XHR (last ~100)
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title blue">🛡️ Error capture paths</div>
+    <div class="card-body">
+      <strong>Render crash:</strong> Component throws → <code>&lt;Sentry.ErrorBoundary&gt;</code> catches → sends Error + shows fallback UI<br><br>
+      <strong>Handled error:</strong> <code>try/catch</code> → <code>Sentry.captureException(err)</code> → app keeps running<br><br>
+      <strong>Unhandled rejection:</strong> <code>Promise.reject()</code> with no <code>.catch()</code> → SDK hooks <code>window.onunhandledrejection</code> → auto-captured<br><br>
+      <strong>Message:</strong> <code>Sentry.captureMessage('...')</code> → warning-level, no stack trace
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title purple">🔗 Trace propagation headers</div>
+    <div class="card-body">
+      <code>sentry-trace</code> carries:<br>
+      • <strong>Trace ID</strong> — shared across all services<br>
+      • <strong>Parent Span ID</strong> — the fetch span<br>
+      • <strong>Sampling decision</strong> — 1 (sampled) or 0 (not)<br><br>
+      <code>baggage</code> carries:<br>
+      • <strong>Dynamic Sampling Context</strong> — release, environment, user segment<br><br>
+      Only sent to targets matching <code>tracePropagationTargets</code>
+    </div>
+  </div>
+</div>
+
+<!-- CONNECTOR -->
+<div class="connector">
+  <span class="conn-line"></span>
+  <span class="conn-label">⬇ sentry-trace + baggage headers connect frontend trace to backend ⬇</span>
+  <span class="conn-line"></span>
+</div>
+
+<!-- ==================== PHASE 2: BACKEND ==================== -->
+<div class="section-bar backend">
+  <span class="label">Phase 2 — Backend (Node.js / Express)</span>
+  <span class="line"></span>
+</div>
+
+<div class="flow-row">
+  <div class="node n-sdk-be" style="min-width:170px">
+    <div class="icon">📦</div>
+    <div class="title">@sentry/node SDK</div>
+    <div class="desc">Sentry.init() runs before routes. Reads sentry-trace header → continues the same trace.</div>
+    <div class="tags">
+      <span class="tag tag-span">Continues trace</span>
+      <span class="tag tag-span">New span ID</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">middleware</div></div>
+
+  <div class="node n-middleware">
+    <div class="icon">🏷️</div>
+    <div class="title">requestContext</div>
+    <div class="desc">Your middleware. Sets user, tags, request ID on Sentry scope.</div>
+    <div class="tags">
+      <span class="tag tag-metric">user.plan</span>
+      <span class="tag tag-metric">user.region</span>
+      <span class="tag tag-metric">http.route</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">route</div></div>
+
+  <div class="node n-route" style="min-width:175px">
+    <div class="icon">🔀</div>
+    <div class="title">Route Handler</div>
+    <div class="desc">Business logic: DB queries, external API calls, computations</div>
+    <div class="tags">
+      <span class="tag tag-span">Span/DB</span>
+      <span class="tag tag-span">Span/HTTP</span>
+      <span class="tag tag-log">Log</span>
+      <span class="tag tag-error">Error</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">error<br>propagates</div></div>
+
+  <div class="node n-errhandler" style="min-width:180px">
+    <div class="icon">🛡️</div>
+    <div class="title">setupExpressErrorHandler</div>
+    <div class="desc">Catches unhandled throws. MUST be registered before your own error handler.</div>
+    <div class="tags">
+      <span class="tag tag-error">→ Sentry</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">response</div></div>
+
+  <div class="node n-user">
+    <div class="icon">↩️</div>
+    <div class="title">HTTP Response</div>
+    <div class="desc">500 error or normal response back to frontend</div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <div class="card-title green">🔄 Distributed trace continuation</div>
+    <div class="card-body">
+      Backend SDK reads <code>sentry-trace</code> from inbound request<br>
+      → Creates a new <strong>Transaction</strong> as a child of the frontend's fetch span<br>
+      → <strong>Same trace ID</strong>, different span ID<br>
+      → All child spans (DB, HTTP, manual) inherit this trace ID<br>
+      → Result: one user click = one trace from browser → API → DB → response
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title green">📊 What the backend generates</div>
+    <div class="card-body">
+      <span class="tag tag-span">Span</span> per DB query (auto-instrumented)<br>
+      <span class="tag tag-span">Span</span> per outbound HTTP call (auto)<br>
+      <span class="tag tag-span">Span</span> via manual <code>Sentry.startSpan()</code><br>
+      <span class="tag tag-log">Log</span> from logger or console<br>
+      <span class="tag tag-error">Error</span> from throw, rejection, or <code>captureException</code><br>
+      <strong>Tags</strong> from requestContext middleware on every event
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title red">❌ → ✅ What reaches Sentry?</div>
+    <div class="card-body">
+      <code>throw</code> / unhandled → <code>setupExpressErrorHandler</code> → <strong style="color:var(--green)">✅ Sentry</strong><br><br>
+      <code>res.status(404).json()</code> → handled response → <strong style="color:var(--red)">❌ Not Sentry</strong><br>
+      <span style="font-size:10px">(unless you manually call <code>captureMessage</code>)</span><br><br>
+      <code>Promise.reject()</code> no await → server returns 200 → <strong style="color:var(--green)">✅ Sentry</strong><br>
+      <span style="font-size:10px">(caught via <code>process.on('unhandledRejection')</code>)</span>
+    </div>
+  </div>
+</div>
+
+<!-- MERGE POINT -->
+<div class="connector">
+  <span class="conn-line"></span>
+  <span class="conn-label">⬇ Both frontend + backend SDKs package data into Envelopes and send to Sentry ⬇</span>
+  <span class="conn-line"></span>
+</div>
+
+<!-- ==================== PHASE 3: TRANSPORT ==================== -->
+<div class="section-bar shared">
+  <span class="label">Phase 3 — Transport &amp; Ingest</span>
+  <span class="line"></span>
+</div>
+
+<div class="flow-row">
+  <div class="node n-envelope" style="min-width:185px">
+    <div class="icon">📨</div>
+    <div class="title">Envelope</div>
+    <div class="desc">Container format. Batches multiple items in one HTTP POST to <code>/api/{PROJECT_ID}/envelope/</code></div>
+    <div class="tags">
+      <span class="tag tag-error">Error</span>
+      <span class="tag tag-span">Transaction</span>
+      <span class="tag tag-session">Session</span>
+      <span class="tag tag-replay">Replay</span>
+      <span class="tag tag-log">Logs</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">——HTTP POST——→</div><div class="arrow-label">DSN key<br>in header</div></div>
+
+  <div class="node n-relay" style="min-width:185px">
+    <div class="icon">🛡️</div>
+    <div class="title">Relay</div>
+    <div class="desc">Stateless Rust service at the edge. First thing that touches your data.</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">forwards to<br>topics</div></div>
+
+  <div class="node n-kafka" style="min-width:170px">
+    <div class="icon">📬</div>
+    <div class="title">Kafka</div>
+    <div class="desc">Distributed message broker. Decouples ingest from processing.</div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <div class="card-title orange">📨 Envelope — What's inside</div>
+    <div class="card-body">
+      A single Envelope can carry:<br>
+      • Error event (with stack trace, breadcrumbs, context)<br>
+      • Transaction + all child spans<br>
+      • Session update (start/end/crash)<br>
+      • Replay recording chunk (DOM mutations)<br>
+      • Log entries<br>
+      • Attachments<br><br>
+      <strong>Why Envelopes:</strong> Before Envelopes, SDKs sent individual events to <code>/store/</code>. Envelopes batch heterogeneous data in one request — critical for performance and offline queuing.
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title orange">🛡️ Relay — The 4 things it does</div>
+    <div class="card-body">
+      <strong style="color:var(--red)">1. Rate limiting</strong> — enforces org/project/DSN quotas. Returns <code>429</code> with <code>X-Sentry-Rate-Limits</code> + <code>Retry-After</code> headers. SDK backs off.<br><br>
+      <strong style="color:var(--yellow)">2. PII scrubbing</strong> — Advanced Data Scrubbing rules: <code>@ip:replace</code>, <code>@password:remove</code>. Sensitive data stripped before entering pipeline.<br><br>
+      <strong style="color:var(--blue)">3. Event filtering</strong> — drops events matching inbound filters (browser extensions, crawlers, ignored error messages).<br><br>
+      <strong style="color:var(--green)">4. Normalization</strong> — validates schema, standardizes fields, normalizes stack trace formats.
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title purple">📬 Kafka — Why it exists</div>
+    <div class="card-body">
+      <strong>Decouples ingest from processing.</strong> If processing is slow or restarting, Kafka buffers the data — nothing is lost.<br><br>
+      <strong>Topics:</strong><br>
+      • <code>events</code> — errors<br>
+      • <code>transactions</code> — spans/traces<br>
+      • <code>sessions</code> — release health data<br>
+      • <code>attachments</code><br>
+      • <code>replay-recordings</code><br><br>
+      <strong>Multiple consumers</strong> read independently — Snuba for storage, alerting workers for notifications, etc.<br><br>
+      <strong>Handles spikes:</strong> Customer outage generates 10M errors/hour? Kafka absorbs it.
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PHASE 4: PROCESSING ==================== -->
+<div class="section-bar shared">
+  <span class="label">Phase 4 — Event Processing</span>
+  <span class="line"></span>
+</div>
+
+<div class="flow-row">
+  <div class="node n-process" style="min-width:175px">
+    <div class="icon">🔍</div>
+    <div class="title">1. Symbolication</div>
+    <div class="desc">Symbolicator service resolves minified/native stack traces back to original source code.</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">then</div></div>
+
+  <div class="node n-process" style="min-width:175px; border-color: var(--yellow);">
+    <div class="icon">🗂️</div>
+    <div class="title">2. Grouping</div>
+    <div class="desc">Computes fingerprint. Assigns event to an Issue. Uses in_app frames for grouping.</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">then</div></div>
+
+  <div class="node n-process" style="min-width:175px; border-color: var(--blue);">
+    <div class="icon">🏷️</div>
+    <div class="title">3. Enrichment</div>
+    <div class="desc">Geo-IP resolution, release association, tag extraction, context merging.</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">———→</div><div class="arrow-label">store</div></div>
+
+  <div class="node n-clickhouse" style="min-width:150px">
+    <div class="icon">🗄️</div>
+    <div class="title">Storage</div>
+    <div class="desc">Processed data written to ClickHouse &amp; PostgreSQL</div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <div class="card-title green">🔍 Symbolication — Making stack traces readable</div>
+    <div class="card-body">
+      <strong>JavaScript:</strong> Minified code → source maps (JSON) → original file + line + column<br>
+      Without: <code>a.js:1:34291</code><br>
+      With: <code>checkout.js:142 processPayment()</code><br><br>
+      <strong>Native (iOS/Android/C++):</strong> Debug symbols (DWARF, PDB) → function names + line numbers. SymCache files for fast lookups.<br><br>
+      <strong>Source maps are uploaded</strong> during build via <code>sentry-cli</code> or vite/webpack plugin, associated with a release.
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title yellow">🗂️ Grouping — How events become Issues</div>
+    <div class="card-body">
+      <strong>Default fingerprint:</strong> Stack trace frames (filtered to "in-app" only) + exception type + message<br><br>
+      <strong>Custom fingerprint:</strong> <code>setFingerprint(['auth-failure', '{{ default }}'])</code> — forces all auth errors into one Issue<br><br>
+      <strong>The <code>in_app</code> flag:</strong> Marks frames as your code vs. library code. Only in-app frames drive default grouping. Also controls "Most Relevant Frame" highlighting in the UI. Set via <code>inAppInclude</code> / <code>inAppExclude</code>.
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title blue">🏷️ Enrichment — Adding context</div>
+    <div class="card-body">
+      <strong>Geo-IP:</strong> Resolve IP to country/city<br>
+      <strong>Release association:</strong> Link event to the release version that was running<br>
+      <strong>Tag extraction:</strong> Pull indexed tags from event data<br>
+      <strong>Context merging:</strong> Combine user, browser, OS, device info<br>
+      <strong>Issue linking:</strong> Match fingerprint to existing Issue or create new one<br><br>
+      After enrichment, the fully processed event is written to storage.
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PHASE 5: STORAGE ==================== -->
+<div class="section-bar shared">
+  <span class="label">Phase 5 — Storage</span>
+  <span class="line"></span>
+</div>
+
+<div class="storage-row">
+  <div class="detail-card" style="border-color: var(--yellow);">
+    <div class="card-title yellow">🗄️ ClickHouse — The Analytics Engine (via Snuba)</div>
+    <div class="card-body">
+      <strong>Stores:</strong> Raw event data, spans, logs, metrics, aggregates — everything you query and visualize.<br><br>
+      <strong>Why ClickHouse:</strong> Columnar OLAP database. Fast aggregations over billions of rows. When you search issues, filter by tag, view a trace waterfall, check p95 latency — that's ClickHouse.<br><br>
+      <strong>Snuba</strong> is the query layer on top. It takes search queries (SNQL/MQL), validates them, compiles to ClickHouse SQL, returns results. Powers all of Sentry's visibility features. Uses Redis for caching.<br><br>
+      <strong>Think of it as:</strong> The observability data warehouse.
+    </div>
+  </div>
+  <div class="detail-card" style="border-color: var(--cyan);">
+    <div class="card-title cyan">🐘 PostgreSQL — The Application Database</div>
+    <div class="card-body">
+      <strong>Stores:</strong> Organizations, projects, teams, users. Issue state (resolved, ignored, assigned). Alert rules. Integration configs. Saved searches. Django ORM app state.<br><br>
+      <strong>Does NOT store:</strong> Raw event data (that's all ClickHouse).<br><br>
+      <strong>ACID guarantees:</strong> Needed for transactional operations like updating issue state, managing user permissions, storing alert rules.<br><br>
+      <strong>Think of it as:</strong> The configuration and state database.
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PHASE 6: WHAT THE ENGINEER SEES ==================== -->
+<div class="section-bar output">
+  <span class="label">Phase 6 — What the Engineer Sees &amp; Does</span>
+  <span class="line"></span>
+</div>
+
+<div class="flow-row">
+  <div class="node n-dashboard" style="min-width:170px">
+    <div class="icon">🖥️</div>
+    <div class="title">Issue Detail Page</div>
+    <div class="desc">Stack trace, breadcrumbs, tags, context — the full error picture</div>
+    <div class="tags">
+      <span class="tag tag-error">Error</span>
+      <span class="tag tag-span">Trace</span>
+      <span class="tag tag-log">Logs</span>
+    </div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">——→</div></div>
+
+  <div class="node n-dashboard" style="min-width:155px; border-color:var(--purple)">
+    <div class="icon">🎬</div>
+    <div class="title">Session Replay</div>
+    <div class="desc">Video-like playback of what the user did. Privacy-first, text masked.</div>
+    <div class="tags"><span class="tag tag-replay">Replay</span></div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">——→</div></div>
+
+  <div class="node n-alert" style="min-width:155px">
+    <div class="icon">🔔</div>
+    <div class="title">Alerts</div>
+    <div class="desc">Issue alerts (frequency, regression) + metric alerts (threshold, anomaly)</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">——→</div></div>
+
+  <div class="node n-integration" style="min-width:155px">
+    <div class="icon">🔌</div>
+    <div class="title">Integrations</div>
+    <div class="desc">Slack notification, Jira ticket, GitHub suspect commit</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">——→</div></div>
+
+  <div class="node n-sdk-be" style="min-width:155px">
+    <div class="icon">🔧</div>
+    <div class="title">Fix &amp; Deploy</div>
+    <div class="desc">Engineer fixes the bug, deploys new release</div>
+  </div>
+
+  <div class="arrow"><div class="arrow-line">——→</div></div>
+
+  <div class="node n-clickhouse" style="min-width:155px">
+    <div class="icon">📈</div>
+    <div class="title">Release Health</div>
+    <div class="desc">Crash-free rate recovers. Regression resolved.</div>
+    <div class="tags"><span class="tag tag-session">Sessions</span></div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <div class="card-title pink">🖥️ Issue detail — pulls from everything</div>
+    <div class="card-body">
+      <strong style="color:var(--cyan)">PostgreSQL</strong> → Issue metadata (title, status, assignee, first/last seen)<br>
+      <strong style="color:var(--yellow)">ClickHouse</strong> → Event data (stack trace, breadcrumbs, tags, context)<br>
+      <strong style="color:var(--green)">Symbolicator</strong> → Already resolved the stack trace during processing<br>
+      <strong style="color:var(--pink)">Replay</strong> → Session playback (if captured)<br>
+      <strong style="color:var(--purple)">Spans</strong> → Trace waterfall (via trace ID from ClickHouse)<br>
+      <strong style="color:#56d364">Logs</strong> → Context messages (via trace ID from ClickHouse)
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title red">🔔 Alerts — two types</div>
+    <div class="card-body">
+      <strong>Issue alerts:</strong> New issue, frequency &gt; N in time window, affects &gt; N users, regression (resolved issue reappears)<br><br>
+      <strong>Metric alerts:</strong> p95 latency &gt; 2s, error rate &gt; 5%, custom metric threshold. Three modes: static, percent change, anomaly detection.<br><br>
+      <strong>Anatomy:</strong> Condition → Filter → Threshold → Action (Slack, email, PagerDuty, Opsgenie, webhooks)
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title purple">🔌 Integrations — closing the loop</div>
+    <div class="card-body">
+      <strong>GitHub:</strong> Stack trace → source linking, commit blame, suspect commits, PR comments<br><br>
+      <strong>Jira:</strong> Sentry error → Jira ticket → status syncs back bidirectionally<br><br>
+      <strong>Slack:</strong> Alert rules route rich notifications to channels<br><br>
+      <strong>Source maps:</strong> Uploaded during build. Without them: <code>a.js:1:34291</code>. With them: <code>checkout.js:142</code>
+    </div>
+  </div>
+  <div class="detail-card">
+    <div class="card-title green">📈 Release Health — did the fix work?</div>
+    <div class="card-body">
+      <strong>Crash-free session rate</strong> — the key metric. 99.5%+ is healthy.<br><br>
+      <strong>The loop:</strong> Deploy v2.1.0 → adoption tracked → crash-free drops 99.8% → 97% → regression alert fires → engineer sees resurfaced error → GitHub shows the commit → fix deployed → crash-free recovers.<br><br>
+      <strong>That's the full circle.</strong> From user click to engineer fix, verified by release health.
+    </div>
+  </div>
+</div>
+
+<div class="callout purple" style="margin-top:24px; margin-bottom: 32px;">
+  <strong>The single thread that connects everything:</strong> The <strong>trace ID</strong>. Generated when the user clicks a button in the browser. Propagated via HTTP headers to every service. Attached to every Error, Span, and Log. Stored in ClickHouse. Used to pull the full picture together on the Issue Detail page. One ID, one story, end to end.
+</div>
+
+</div>
+</body>
+</html>

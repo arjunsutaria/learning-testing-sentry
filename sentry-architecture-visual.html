@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentry Architecture — Frontend & Backend Data Flow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; padding: 32px; }
+
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; color: #fff; }
+  .subtitle { font-size: 14px; color: #8b949e; margin-bottom: 32px; }
+
+  .diagram-section { margin-bottom: 48px; }
+  .diagram-section h2 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
+  .diagram-section h2 .badge { font-size: 11px; background: #1f6feb33; color: #58a6ff; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+
+  .flow-container { position: relative; padding: 24px; background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow-x: auto; }
+
+  /* Flow layout */
+  .flow { display: flex; align-items: flex-start; gap: 0; min-width: fit-content; }
+  .flow-column { display: flex; flex-direction: column; align-items: center; min-width: 160px; }
+
+  /* Nodes */
+  .node {
+    border-radius: 10px; padding: 12px 16px; text-align: center; min-width: 140px; position: relative;
+    border: 1.5px solid; transition: transform 0.15s;
+  }
+  .node:hover { transform: scale(1.03); }
+  .node .label { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .node .desc { font-size: 10.5px; opacity: 0.8; line-height: 1.4; }
+  .node .data-types { display: flex; gap: 4px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+  .node .data-types span { font-size: 9px; padding: 1px 6px; border-radius: 6px; font-weight: 600; }
+
+  .dt-error { background: #f8514933; color: #f85149; }
+  .dt-span { background: #a371f733; color: #bc8cff; }
+  .dt-log { background: #3fb95033; color: #56d364; }
+  .dt-session { background: #d2992233; color: #e3b341; }
+  .dt-replay { background: #f778ba33; color: #f778ba; }
+
+  /* Node types */
+  .node-sdk { background: #0d419d22; border-color: #1f6feb; }
+  .node-browser { background: #1a1e2433; border-color: #484f58; }
+  .node-relay { background: #f0883e22; border-color: #f0883e; }
+  .node-kafka { background: #a371f722; border-color: #a371f7; }
+  .node-process { background: #3fb95022; border-color: #3fb950; }
+  .node-storage { background: #d2992222; border-color: #d29922; }
+  .node-ui { background: #f778ba22; border-color: #f778ba; }
+  .node-backend { background: #79c0ff22; border-color: #79c0ff; }
+
+  /* Arrows */
+  .arrow-col { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 48px; padding-top: 20px; }
+  .arrow-line { display: flex; align-items: center; color: #484f58; font-size: 18px; letter-spacing: -2px; }
+  .arrow-label { font-size: 9px; color: #8b949e; text-align: center; margin-top: 2px; max-width: 56px; line-height: 1.3; }
+
+  /* Stacked nodes */
+  .stack { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+
+  /* Data generated panel */
+  .data-panel {
+    margin-top: 12px; padding: 10px 14px; background: #0d1117; border: 1px solid #21262d; border-radius: 8px;
+    font-size: 10.5px; color: #8b949e; line-height: 1.7; min-width: 140px;
+  }
+  .data-panel .panel-title { font-size: 10px; font-weight: 600; color: #58a6ff; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .data-panel code { background: #21262d; padding: 1px 5px; border-radius: 4px; font-size: 10px; color: #e6edf3; }
+
+  /* Section divider */
+  .divider {
+    display: flex; align-items: center; gap: 12px; margin: 40px 0 32px;
+    font-size: 12px; color: #484f58; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+  }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #21262d; }
+
+  /* Shared pipeline */
+  .shared-label {
+    display: inline-block; font-size: 11px; color: #8b949e; background: #21262d;
+    padding: 3px 10px; border-radius: 6px; margin-bottom: 16px;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap; padding: 12px 16px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 32px;
+    align-items: center;
+  }
+  .legend-title { font-size: 11px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Callout boxes */
+  .callout {
+    margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 12px; line-height: 1.6;
+    border-left: 3px solid;
+  }
+  .callout-blue { background: #0d419d15; border-color: #1f6feb; color: #79c0ff; }
+  .callout-orange { background: #f0883e15; border-color: #f0883e; color: #f0883e; }
+  .callout-green { background: #3fb95015; border-color: #3fb950; color: #56d364; }
+  .callout strong { color: #e6edf3; }
+
+  /* Trace line */
+  .trace-line {
+    position: relative; margin: 20px 0; padding: 8px 0;
+    border-top: 2px dashed #a371f744;
+  }
+  .trace-tag {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: #a371f733; color: #bc8cff; font-size: 10px; font-weight: 600;
+    padding: 2px 10px; border-radius: 10px; white-space: nowrap;
+  }
+
+  /* Tab system */
+  .tabs { display: flex; gap: 0; margin-bottom: 0; }
+  .tab {
+    padding: 10px 20px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid #30363d; border-bottom: none; border-radius: 8px 8px 0 0;
+    background: #0d1117; color: #8b949e; transition: all 0.15s;
+  }
+  .tab:hover { color: #e6edf3; }
+  .tab.active { background: #161b22; color: #e6edf3; border-bottom-color: #161b22; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .tab-body { border-top: 1px solid #30363d; margin-top: -1px; }
+</style>
+</head>
+<body>
+
+<h1>Sentry Architecture — How Data Flows End to End</h1>
+<p class="subtitle">Visual reference for quick-fire session · Frontend and Backend paths · What gets generated, how it travels, where it lands</p>
+
+<div class="legend">
+  <span class="legend-title">Data types:</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f85149"></span> Error</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#a371f7"></span> Span</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#3fb950"></span> Log</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#d29922"></span> Session</span>
+  <span class="legend-item"><span class="legend-dot" style="background:#f778ba"></span> Replay</span>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('frontend')">🌐 Frontend Flow</div>
+  <div class="tab" onclick="switchTab('backend')">⚙️ Backend Flow</div>
+  <div class="tab" onclick="switchTab('shared')">🔗 Shared Pipeline (Relay → Dashboard)</div>
+</div>
+
+<div class="tab-body">
+
+<!-- ============ FRONTEND ============ -->
+<div class="tab-content active" id="tab-frontend">
+<div class="diagram-section">
+<div class="flow-container">
+
+  <div class="flow">
+    <!-- User Action -->
+    <div class="flow-column">
+      <div class="node node-browser">
+        <div class="label">👤 User Action</div>
+        <div class="desc">Click, navigate,<br>type, submit</div>
+      </div>
+      <div class="data-panel">
+        <div class="panel-title">Auto-captured</div>
+        Breadcrumb added<br>
+        to trail (click, nav)
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">triggers</div>
+    </div>
+
+    <!-- React Component -->
+    <div class="flow-column">
+      <div class="node node-browser">
+        <div class="label">⚛️ React Component</div>
+        <div class="desc">Render, event handler,<br>useEffect</div>
+      </div>
+      <div class="data-panel">
+        <div class="panel-title">May generate</div>
+        <span class="dt-error" style="padding:1px 5px;border-radius:4px;font-size:10px">Render crash → ErrorBoundary</span><br>
+        <span class="dt-log" style="padding:1px 5px;border-radius:4px;font-size:10px;margin-top:2px;display:inline-block">console.log/warn/error</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">fetch()</div>
+    </div>
+
+    <!-- Sentry Browser SDK -->
+    <div class="flow-column">
+      <div class="node node-sdk" style="min-width: 180px;">
+        <div class="label">📦 @sentry/react SDK</div>
+        <div class="desc">Sentry.init() runs first<br>before app mounts</div>
+        <div class="data-types">
+          <span class="dt-error">Error</span>
+          <span class="dt-span">Span</span>
+          <span class="dt-log">Log</span>
+          <span class="dt-session">Session</span>
+          <span class="dt-replay">Replay</span>
+        </div>
+      </div>
+      <div class="data-panel" style="min-width: 180px;">
+        <div class="panel-title">SDK generates</div>
+        <span class="dt-span" style="padding:1px 5px;border-radius:4px;font-size:10px">Transaction</span> pageload / navigation<br>
+        <span class="dt-span" style="padding:1px 5px;border-radius:4px;font-size:10px">Span</span> each fetch() auto-instrumented<br>
+        <span class="dt-session" style="padding:1px 5px;border-radius:4px;font-size:10px">Session</span> tracks app start/crash<br>
+        <span class="dt-replay" style="padding:1px 5px;border-radius:4px;font-size:10px">Replay</span> DOM snapshots + mutations<br>
+        <span class="dt-log" style="padding:1px 5px;border-radius:4px;font-size:10px">Log</span> via consoleLoggingIntegration<br>
+        <span style="font-size:10px;color:#d29922">+ Web Vitals: LCP, FID, CLS, TTFB, FCP</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label" style="max-width:70px">Envelope<br>(batched)</div>
+    </div>
+
+    <!-- Envelope -->
+    <div class="flow-column">
+      <div class="node node-relay" style="min-width: 170px;">
+        <div class="label">📨 Envelope</div>
+        <div class="desc">POST /api/{PROJECT_ID}/envelope/</div>
+      </div>
+      <div class="data-panel" style="min-width: 170px;">
+        <div class="panel-title">Contains</div>
+        Error event (if thrown)<br>
+        Transaction + child spans<br>
+        Session update<br>
+        Replay recording chunk<br>
+        Log entries<br>
+        <code>DSN key</code> in header
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">HTTP POST</div>
+    </div>
+
+    <!-- To Pipeline -->
+    <div class="flow-column">
+      <div class="node node-relay">
+        <div class="label">→ Relay</div>
+        <div class="desc">See Shared Pipeline tab</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-blue" style="margin-top:20px">
+    <strong>Key frontend detail:</strong> The SDK injects <code>sentry-trace</code> + <code>baggage</code> headers into every <code>fetch()</code> to targets matching <code>tracePropagationTargets</code>. This is how the frontend trace connects to the backend trace — same trace ID, propagated via HTTP headers. <strong>Head-based sampling:</strong> the frontend decides whether to sample this trace, and the backend respects that decision.
+  </div>
+
+  <div class="callout callout-orange" style="margin-top:8px">
+    <strong>What happens on a render crash:</strong> Component throws during render → React unmounts the tree → <code>&lt;Sentry.ErrorBoundary&gt;</code> catches it → sends Error to Sentry with component stack trace → renders fallback UI. Without the boundary: blank white screen, no Sentry event.
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- ============ BACKEND ============ -->
+<div class="tab-content" id="tab-backend">
+<div class="diagram-section">
+<div class="flow-container">
+
+  <div class="flow">
+    <!-- Inbound Request -->
+    <div class="flow-column">
+      <div class="node node-browser">
+        <div class="label">📡 Inbound Request</div>
+        <div class="desc">HTTP request from<br>frontend or external</div>
+        <div class="data-types">
+          <span style="font-size:9px;padding:1px 6px;border-radius:6px;font-weight:600;background:#a371f733;color:#bc8cff">sentry-trace header</span>
+          <span style="font-size:9px;padding:1px 6px;border-radius:6px;font-weight:600;background:#a371f733;color:#bc8cff">baggage header</span>
+        </div>
+      </div>
+      <div class="data-panel">
+        <div class="panel-title">Carries</div>
+        Trace ID from frontend<br>
+        Parent span ID<br>
+        Sampling decision
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">HTTP</div>
+    </div>
+
+    <!-- Node SDK + Middleware -->
+    <div class="flow-column">
+      <div class="node node-sdk" style="min-width: 180px;">
+        <div class="label">📦 @sentry/node SDK</div>
+        <div class="desc">Sentry.init() runs first<br>before routes register</div>
+        <div class="data-types">
+          <span class="dt-error">Error</span>
+          <span class="dt-span">Span</span>
+          <span class="dt-log">Log</span>
+        </div>
+      </div>
+      <div class="data-panel" style="min-width: 180px;">
+        <div class="panel-title">Auto-creates</div>
+        <span class="dt-span" style="padding:1px 5px;border-radius:4px;font-size:10px">Transaction</span> for the inbound request<br>
+        Continues trace from frontend<br>
+        (same trace ID, new span ID)
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">middleware</div>
+    </div>
+
+    <!-- Request Context -->
+    <div class="flow-column">
+      <div class="node node-backend">
+        <div class="label">🏷️ requestContext</div>
+        <div class="desc">Your middleware sets<br>user, tags, request ID</div>
+      </div>
+      <div class="data-panel">
+        <div class="panel-title">Attaches to scope</div>
+        <code>user.plan</code> <code>user.region</code><br>
+        <code>http.method</code> <code>http.route</code><br>
+        <code>request.id</code> (UUID)
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">route handler</div>
+    </div>
+
+    <!-- Route / Business Logic -->
+    <div class="flow-column">
+      <div class="node node-backend" style="min-width: 170px;">
+        <div class="label">🔀 Route Handler</div>
+        <div class="desc">Business logic, DB calls,<br>external API calls</div>
+      </div>
+      <div class="data-panel" style="min-width: 170px;">
+        <div class="panel-title">May generate</div>
+        <span class="dt-span" style="padding:1px 5px;border-radius:4px;font-size:10px">Span</span> per DB query (auto)<br>
+        <span class="dt-span" style="padding:1px 5px;border-radius:4px;font-size:10px">Span</span> per HTTP client call (auto)<br>
+        <span class="dt-span" style="padding:1px 5px;border-radius:4px;font-size:10px">Span</span> via manual <code>startSpan</code><br>
+        <span class="dt-log" style="padding:1px 5px;border-radius:4px;font-size:10px">Log</span> from logger/console<br>
+        <span class="dt-error" style="padding:1px 5px;border-radius:4px;font-size:10px">Error</span> if throw or captureException
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label" style="max-width:70px">error<br>propagates</div>
+    </div>
+
+    <!-- Error Handler -->
+    <div class="flow-column">
+      <div class="stack">
+        <div class="node node-process" style="min-width: 170px;">
+          <div class="label">🛡️ setupExpressErrorHandler</div>
+          <div class="desc">Catches unhandled throws<br>MUST be before your handler</div>
+          <div class="data-types">
+            <span class="dt-error">Error → Sentry</span>
+          </div>
+        </div>
+        <div style="font-size:10px; color:#8b949e;">↓ then ↓</div>
+        <div class="node node-browser" style="min-width: 170px;">
+          <div class="label">Your Error Handler</div>
+          <div class="desc">Returns 500 to client</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">Envelope</div>
+    </div>
+
+    <!-- To Pipeline -->
+    <div class="flow-column">
+      <div class="node node-relay">
+        <div class="label">→ Relay</div>
+        <div class="desc">See Shared Pipeline tab</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-green" style="margin-top:20px">
+    <strong>Distributed trace in action:</strong> The backend SDK reads <code>sentry-trace</code> from the inbound request and <strong>continues</strong> the same trace — creating a new span as a child of the frontend's fetch span. Same trace ID, different span IDs. This is how one user action produces a single trace spanning browser → API → DB.
+  </div>
+
+  <div class="callout callout-orange" style="margin-top:8px">
+    <strong>What reaches Sentry vs. what doesn't:</strong><br>
+    • <code>throw</code> or unhandled rejection → <code>setupExpressErrorHandler</code> → ✅ Sentry<br>
+    • <code>res.status(404).json(...)</code> → handled response → ❌ NOT Sentry (unless you call <code>captureMessage</code>)<br>
+    • <code>Promise.reject()</code> with no await → silent failure, server returns 200 → ✅ Sentry catches via <code>unhandledRejection</code>
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- ============ SHARED PIPELINE ============ -->
+<div class="tab-content" id="tab-shared">
+<div class="diagram-section">
+<div class="flow-container">
+
+  <div class="flow">
+    <!-- Relay -->
+    <div class="flow-column">
+      <div class="node node-relay" style="min-width: 160px;">
+        <div class="label">🛡️ Relay</div>
+        <div class="desc">Rust service at the edge</div>
+      </div>
+      <div class="data-panel" style="min-width: 160px;">
+        <div class="panel-title">Does 4 things</div>
+        1. <strong style="color:#f85149">Rate limiting</strong><br>
+        &nbsp;&nbsp;→ 429 + Retry-After<br>
+        2. <strong style="color:#d29922">PII scrubbing</strong><br>
+        &nbsp;&nbsp;→ strips sensitive data<br>
+        3. <strong style="color:#58a6ff">Filtering</strong><br>
+        &nbsp;&nbsp;→ drops browser ext errors<br>
+        4. <strong style="color:#56d364">Normalization</strong><br>
+        &nbsp;&nbsp;→ schema validation
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">forwards</div>
+    </div>
+
+    <!-- Kafka -->
+    <div class="flow-column">
+      <div class="node node-kafka" style="min-width: 160px;">
+        <div class="label">📬 Kafka</div>
+        <div class="desc">Message broker<br>decouples ingest ↔ processing</div>
+      </div>
+      <div class="data-panel" style="min-width: 160px;">
+        <div class="panel-title">Topics</div>
+        <code>events</code> — errors<br>
+        <code>transactions</code> — spans<br>
+        <code>sessions</code><br>
+        <code>attachments</code><br>
+        <code>replay-recordings</code><br><br>
+        <span style="color:#8b949e;font-size:9.5px">Buffers spikes, multiple<br>consumers read independently</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">consumers</div>
+    </div>
+
+    <!-- Event Processing -->
+    <div class="flow-column">
+      <div class="node node-process" style="min-width: 180px;">
+        <div class="label">⚙️ Event Processing</div>
+        <div class="desc">Where raw data becomes useful</div>
+      </div>
+      <div class="data-panel" style="min-width: 180px;">
+        <div class="panel-title">Pipeline steps</div>
+        1. <strong style="color:#58a6ff">Symbolication</strong><br>
+        &nbsp;&nbsp;Source maps → readable traces<br>
+        &nbsp;&nbsp;Debug symbols → native frames<br>
+        2. <strong style="color:#56d364">Grouping</strong><br>
+        &nbsp;&nbsp;Fingerprint → Issue assignment<br>
+        &nbsp;&nbsp;<code>in_app</code> flag controls grouping<br>
+        3. <strong style="color:#d29922">Enrichment</strong><br>
+        &nbsp;&nbsp;Geo-IP, release association,<br>
+        &nbsp;&nbsp;tag extraction
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">store</div>
+    </div>
+
+    <!-- Storage -->
+    <div class="flow-column">
+      <div class="stack">
+        <div class="node node-storage" style="min-width: 170px;">
+          <div class="label">🗄️ ClickHouse</div>
+          <div class="desc">via Snuba query layer</div>
+          <div class="data-types">
+            <span class="dt-error">Errors</span>
+            <span class="dt-span">Spans</span>
+            <span class="dt-log">Logs</span>
+          </div>
+        </div>
+        <div style="font-size:10px; color:#8b949e;">+ separately</div>
+        <div class="node node-storage" style="min-width: 170px; border-color: #79c0ff;">
+          <div class="label">🐘 PostgreSQL</div>
+          <div class="desc">Metadata & state</div>
+          <div style="font-size:10px; margin-top:4px; color:#8b949e">Orgs, projects, issue state,<br>alert rules, integrations</div>
+        </div>
+      </div>
+      <div class="data-panel" style="min-width: 170px;">
+        <div class="panel-title">The split</div>
+        <strong style="color:#d29922">ClickHouse</strong> = event data<br>
+        (what you query & visualize)<br><br>
+        <strong style="color:#79c0ff">PostgreSQL</strong> = app state<br>
+        (config, issue metadata, rules)
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <div class="arrow-line">―――→</div>
+      <div class="arrow-label">serves</div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="flow-column">
+      <div class="node node-ui" style="min-width: 170px;">
+        <div class="label">🖥️ Sentry Dashboard</div>
+        <div class="desc">What the engineer sees</div>
+      </div>
+      <div class="data-panel" style="min-width: 170px;">
+        <div class="panel-title">Issue detail pulls from</div>
+        <strong style="color:#79c0ff">PostgreSQL</strong> → issue metadata<br>
+        <strong style="color:#d29922">ClickHouse</strong> → event details,<br>
+        &nbsp;&nbsp;stack trace, breadcrumbs, tags<br>
+        <strong style="color:#f778ba">Replay</strong> → session playback<br>
+        <strong style="color:#56d364">Logs</strong> → via trace ID<br>
+        <strong style="color:#bc8cff">Spans</strong> → trace waterfall
+      </div>
+    </div>
+  </div>
+
+  <div class="callout callout-blue" style="margin-top:20px">
+    <strong>Snuba explained simply:</strong> Snuba is the query layer between the Sentry web app and ClickHouse. It takes search queries (SNQL/MQL), validates them, compiles to ClickHouse SQL, and returns results. Every time you search issues, view a graph, or check latency percentiles — that's Snuba querying ClickHouse.
+  </div>
+
+  <div class="callout callout-orange" style="margin-top:8px">
+    <strong>Why source maps are critical:</strong> Without them, a JS stack trace shows <code>a.js:1:34291</code>. With them, you see <code>checkout.js:142 processPayment()</code>. Source maps are uploaded during build (via <code>sentry-cli</code> or vite/webpack plugin) and associated with a release. Symbolicator uses them during event processing to resolve every frame.
+  </div>
+
+</div>
+</div>
+</div>
+
+</div><!-- end tab-body -->
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t => {
+    if (t.textContent.toLowerCase().includes(name === 'shared' ? 'shared' : name)) t.classList.add('active');
+  });
+}
+</script>
+
+</body>
+</html>
